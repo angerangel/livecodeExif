@@ -1,4 +1,5 @@
 # livecodeExif
-Livecode library for manipulating image Exif data
+Livecode library for manipulating image Exif data.
+
 www.livecode.com
 
