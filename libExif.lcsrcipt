@@ -470,8 +470,8 @@ function exifProcessFileArray pData
    #Image ,Orientation,1,Short,42
    put exifProcessFile( pData) into pdata
    repeat for each line tLine in pdata
-      put item 1 of tLine into tnome1
-      put item 2 of tLine into tnome2
+      put word 1 of item 1 of tLine into tnome1
+      put word 1 of item 2 of tLine into tnome2
       put item 3 to -1 of tLine into tArray [tnome1] [tnome2]
    end repeat   
    return tArray
