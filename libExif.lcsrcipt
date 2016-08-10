@@ -69,88 +69,88 @@ function exifProcessFile pData -- pAllTags
 end exifProcessFile
 
 function exifProcessHeader pData
-  -- pData should already contain the entire file (e.g. put URL "binfile:the.jpg" into tData) before calling
-  -- returns a line containing the IFDs (offset within the file relative to lexifBaseOffset)
-  -- returns    -1 if pFilePath not a suitable open file  (no longer relevant)
-  --            -2 if not recognized as a file that libEXIF can decode
-  --            -3 JFIF and other un-handled data
-  
-  local tHex, tJ, tFirstIFD, tIFDs, i
-  
-  put pData into lexifData
-  put empty into tIFDs
-  
-  -- temp debugging
-  put 1000 into tLimit
-  repeat for each char c in lexifData
-    subtract 1 from tLimit
-    if tLimit <= 0 then exit repeat
-    put binaryDecode("H2", c, tHex) into tJ
-    put tHex & space after debuglexifData
-  end repeat
-  -- end of temp debugging
-  
-  put binaryDecode("H8", lexifData, tHex) into tJ
-  switch
-  case tHex = "49492a00"
-    -- TIFF file in Intel format
-    put "I" into lexifEndian
-    put 1 into lexifBaseOffset
-    break
-  case tHex = "4c4c2a00"
-    -- TIFF file in Motorola format
-    put "M" into lexifEndian
-    put 1 into lexifBaseOffset
-    break
-  case char 1 to 4 of tHex = "ffd8"
-    put 3 into markerOffset
-    repeat for 20 times
-      repeat for 7 times
-        put char markerOffset of lexifData into t
-        put binaryDecode("H2", t, marker) into tJ
-        if marker <> "FF" then exit repeat
-        add 1 to markerOffset
-      end repeat
-      if marker = "FF" then return "" -- too many padding bytes
-      
-      ------      offset_frame = file.tell()
-      add 1 to markerOffset
-      put chartonum(char (markerOffset) of lexifData) into lh
-      put chartonum(char (markerOffset+1) of lexifData) into ll
-      put lh*256 + ll into itemLen
-      ------      data = file.read(itemlen-2)
-      switch marker
-      case the markerCOM of stack "libEXIF"
-        put 0 & space & -(markerOffset-1) & space after tIFDs
-        break
-      case the markerJFIF of stack "libEXIF"
-        break
-      case the markerSOS of stack "libEXIF" # Start of Stream (of pixel data)
-        put 0 into endian
-        return tIFDs
-      case the markerEXIF of stack "libEXIF"
-        if char (markerOffset+2) to (markerOffset+5) of lexifData = "Exif" then
-          put markerOffset+8 into lexifBaseOffset  --  2 length, 4 Exif, 2 ??
-          put char lexifBaseOffset of lexifData into lexifEndian
-          exit repeat
-        else return tIFDs
-      end switch
-      add itemlen to markerOffset
-    end repeat
-    break
-  default
-    return "-2"
-  end switch
+   -- pData should already contain the entire file (e.g. put URL "binfile:the.jpg" into tData) before calling
+   -- returns a line containing the IFDs (offset within the file relative to lexifBaseOffset)
+   -- returns    -1 if pFilePath not a suitable open file  (no longer relevant)
+   --            -2 if not recognized as a file that libEXIF can decode
+   --            -3 JFIF and other un-handled data
    
-  put s2n(4,4) into tFirstIFD
-  put tFirstIFD into i
-  repeat while i > 0
-    put i & space after tIFDs
-    put s2n(i, 2) into tEntries
-    put i+2+12*tEntries into tNext
-    put s2n(tNext, 4) into i
-  end repeat
-  return tIFDs
+   local tHex, tJ, tFirstIFD, tIFDs, i
+   
+   put pData into lexifData
+   put empty into tIFDs
+   
+   -- temp debugging
+   put 1000 into tLimit
+   repeat for each char c in lexifData
+      subtract 1 from tLimit
+      if tLimit <= 0 then exit repeat
+      put binaryDecode("H2", c, tHex) into tJ
+      put tHex & space after debuglexifData
+   end repeat
+   -- end of temp debugging
+   
+   put binaryDecode("H8", lexifData, tHex) into tJ
+   switch
+      case tHex = "49492a00"
+         -- TIFF file in Intel format
+         put "I" into lexifEndian
+         put 1 into lexifBaseOffset
+         break
+      case tHex = "4c4c2a00"
+         -- TIFF file in Motorola format
+         put "M" into lexifEndian
+         put 1 into lexifBaseOffset
+         break
+      case char 1 to 4 of tHex = "ffd8"
+         put 3 into markerOffset
+         repeat for 20 times
+            repeat for 7 times
+               put char markerOffset of lexifData into t
+               put binaryDecode("H2", t, marker) into tJ
+               if marker <> "FF" then exit repeat
+               add 1 to markerOffset
+            end repeat
+            if marker = "FF" then return "" -- too many padding bytes
+            
+            ------      offset_frame = file.tell()
+            add 1 to markerOffset
+            put chartonum(char (markerOffset) of lexifData) into lh
+            put chartonum(char (markerOffset+1) of lexifData) into ll
+            put lh*256 + ll into itemLen
+            ------      data = file.read(itemlen-2)
+            switch marker
+               case the markerCOM of this stack 
+                  put 0 & space & -(markerOffset-1) & space after tIFDs
+                  break
+               case the markerJFIF of this stack 
+                  break
+               case the markerSOS of this stack  # Start of Stream (of pixel data)
+                  put 0 into endian
+                  return tIFDs
+               case the markerEXIF of this stack 
+                  if char (markerOffset+2) to (markerOffset+5) of lexifData = "Exif" then
+                     put markerOffset+8 into lexifBaseOffset  --  2 length, 4 Exif, 2 ??
+                     put char lexifBaseOffset of lexifData into lexifEndian
+                     exit repeat
+                  else return tIFDs
+            end switch
+            add itemlen to markerOffset
+         end repeat
+         break
+      default
+         return "-2"
+   end switch
+   
+   put s2n(4,4) into tFirstIFD
+   put tFirstIFD into i
+   repeat while i > 0
+      put i & space after tIFDs
+      put s2n(i, 2) into tEntries
+      put i+2+12*tEntries into tNext
+      put s2n(tNext, 4) into i
+   end repeat
+   return tIFDs
 end exifProcessHeader
 
 function exifDecodeIFD pIFD, pIFDName
@@ -268,7 +268,7 @@ function processMarker pOffset
   put chartonum(char (pOffset+2) of lexifData) into ll
   put lh*256 + ll into itemLen
   switch marker
-  case the markerCOM of stack "libEXIF"
+  case the markerCOM of this stack 
     put empty into tComment
     repeat with a = 1 to itemlen
       put char (pOffset+2+a) of lexifData into ch
@@ -341,125 +341,147 @@ end s2n_intel
 
 on exifResetTags
    -- only needs to be called when new tags are added (or fixed)
-   set the ExifTags["0100"] of stack "libEXIF"  to "ImageWidth"
-   set the ExifTags["0101"] of stack "libEXIF"  to "ImageLength"
-   set the ExifTags["0102"] of stack "libEXIF"  to "BitsPerSample"
-   set the ExifTags["0103"] of stack "libEXIF"  to "Compression,1:Uncompressed TIFF,6:JPEG Compressed"
-   set the ExifTags["0106"] of stack "libEXIF"  to "PhotometricInterpretation"
-   set the ExifTags["010a"] of stack "libEXIF"  to "FillOrder"
-   set the ExifTags["010d"] of stack "libEXIF"  to "DocumentName"
-   set the ExifTags["010e"] of stack "libEXIF"  to "ImageDescription"
-   set the ExifTags["010f"] of stack "libEXIF"  to "Make"
-   set the ExifTags["0110"] of stack "libEXIF"  to "Model"
-   set the ExifTags["0111"] of stack "libEXIF"  to "StripOffsets"
-   set the ExifTags["0112"] of stack "libEXIF"  to "Orientation"
-   set the ExifTags["0115"] of stack "libEXIF"  to "SamplesPerPixel"
-   set the ExifTags["0116"] of stack "libEXIF"  to "RowsPerStrip"
-   set the ExifTags["0117"] of stack "libEXIF"  to "StripByteCounts"
-   set the ExifTags["011a"] of stack "libEXIF"  to "XResolution"
-   set the ExifTags["011b"] of stack "libEXIF"  to "YResolution"
-   set the ExifTags["011c"] of stack "libEXIF"  to "PlanarConfiguration"
-   set the ExifTags["0128"] of stack "libEXIF"  to "ResolutionUnit,1:Not Absolute,2:Pixels/Inch,3:Pixels/Centimeter"
-   set the ExifTags["012d"] of stack "libEXIF"  to "TransferFunction"
-   set the ExifTags["0131"] of stack "libEXIF"  to "Software"
-   set the ExifTags["0132"] of stack "libEXIF"  to "DateTime"
-   set the ExifTags["013b"] of stack "libEXIF"  to "Artist"
-   set the ExifTags["013e"] of stack "libEXIF"  to "WhitePoint"
-   set the ExifTags["013f"] of stack "libEXIF"  to "PrimaryChromaticities"
-   set the ExifTags["0156"] of stack "libEXIF"  to "TransferRange"
-   set the ExifTags["0200"] of stack "libEXIF"  to "JPEGProc"
-   set the ExifTags["0201"] of stack "libEXIF"  to "JPEGInterchangeFormat"
-   set the ExifTags["0202"] of stack "libEXIF"  to "JPEGInterchangeFormatLength"
-   set the ExifTags["0211"] of stack "libEXIF"  to "YCbCrCoefficients"
-   set the ExifTags["0212"] of stack "libEXIF"  to "YCbCrSubSampling"
-   set the ExifTags["0213"] of stack "libEXIF"  to "YCbCrPositioning"
-   set the ExifTags["0214"] of stack "libEXIF"  to "ReferenceBlackWhite"
-   set the ExifTags["828d"] of stack "libEXIF"  to "CFARepeatPatternDim"
-   set the ExifTags["828e"] of stack "libEXIF"  to "CFAPattern"
-   set the ExifTags["828f"] of stack "libEXIF"  to "BatteryLevel"
-   set the ExifTags["8298"] of stack "libEXIF"  to "Copyright"
-   set the ExifTags["829a"] of stack "libEXIF"  to "ExposureTime"
-   set the ExifTags["829d"] of stack "libEXIF"  to "FNumber"
-   set the ExifTags["83bb"] of stack "libEXIF"  to "IPTC/NAA"
-   set the ExifTags["8769"] of stack "libEXIF"  to "ExifOffset"
-   set the ExifTags["8773"] of stack "libEXIF"  to "InterColorProfile"
-   set the ExifTags["8822"] of stack "libEXIF"  to "ExposureProgram,0:Unidentified,1:Manual,2:Program Normal,3:Aperture Priority,4:Shutter Priority,5:Program Creative,6:Program Action,7:Portrait Mode,8:Landscape Mode"
-   set the ExifTags["8824"] of stack "libEXIF"  to "SpectralSensitivity"
-   set the ExifTags["8825"] of stack "libEXIF"  to "GPSInfo"
-   set the ExifTags["8827"] of stack "libEXIF"  to "ISOSpeedRatings"
-   set the ExifTags["8828"] of stack "libEXIF"  to "OECF"
-   set the ExifTags["9000"] of stack "libEXIF"  to "ExifVersion,numToChar"
-   set the ExifTags["9003"] of stack "libEXIF"  to "DateTimeOriginal"
-   set the ExifTags["9004"] of stack "libEXIF"  to "DateTimeDigitized"
-   set the ExifTags["9101"] of stack "libEXIF"  to "ComponentsConfiguration,0:,1:Y,2:Cb,3:Cr,4:Red,5:Green,6:Blue"
-   set the ExifTags["9102"] of stack "libEXIF"  to "CompressedBitsPerPixel"
-   set the ExifTags["9201"] of stack "libEXIF"  to "ShutterSpeedValue"
-   set the ExifTags["9202"] of stack "libEXIF"  to "ApertureValue"
-   set the ExifTags["9203"] of stack "libEXIF"  to "BrightnessValue"
-   set the ExifTags["9204"] of stack "libEXIF"  to "ExposureBiasValue"
-   set the ExifTags["9205"] of stack "libEXIF"  to "MaxApertureValue"
-   set the ExifTags["9206"] of stack "libEXIF"  to "SubjectDistance"
-   set the ExifTags["9207"] of stack "libEXIF"  to "MeteringMode,0:Unidentified,1:Average,2:CenterWeightedAverage,3:Spot,4:MultiSpot"
-   set the ExifTags["9208"] of stack "libEXIF"  to "LightSource,0:Unknown,1:Daylight,2:Fluorescent,3:Tungsten,10:Flash,17:Standard Light A,18:Standard Light B,19:Standard Light C,20:D55,21:D65,22:D75,255:Other"
-   set the ExifTags["9209"] of stack "libEXIF"  to "Flash,0:No,1:Fired,5:Fired (?),7:Fired (!),9:Fill Fired,13:Fill Fired (?),15:Fill Fired (!),16:Off,24:Auto Off,25:Auto Fired,29:Auto Fired (?),31:Auto Fired (!),32:Not Available"
-   set the ExifTags["920a"] of stack "libEXIF"  to "FocalLength"
-   set the ExifTags["927c"] of stack "libEXIF"  to "MakerNote"
-   set the ExifTags["9286"] of stack "libEXIF"  to "UserComment,numToChar"
-   set the ExifTags["9290"] of stack "libEXIF"  to "SubSecTime"
-   set the ExifTags["9291"] of stack "libEXIF"  to "SubSecTimeOriginal"
-   set the ExifTags["9292"] of stack "libEXIF"  to "SubSecTimeDigitized"
-   set the ExifTags["a000"] of stack "libEXIF"  to "FlashPixVersion,numToChar"
-   set the ExifTags["a001"] of stack "libEXIF"  to "ColorSpace"
-   set the ExifTags["a002"] of stack "libEXIF"  to "ExifImageWidth"
-   set the ExifTags["a003"] of stack "libEXIF"  to "ExifImageLength"
-   set the ExifTags["a005"] of stack "libEXIF"  to "InteroperabilityOffset"
-   set the ExifTags["a20b"] of stack "libEXIF"  to "FlashEnergy,)"
-   set the ExifTags["a20c"] of stack "libEXIF"  to "SpatialFrequencyResponse"
-   set the ExifTags["a20e"] of stack "libEXIF"  to "FocalPlaneXResolution"
-   set the ExifTags["a20f"] of stack "libEXIF"  to "FocalPlaneYResolution"
-   set the ExifTags["a210"] of stack "libEXIF"  to "FocalPlaneResolutionUnit"
-   set the ExifTags["a214"] of stack "libEXIF"  to "SubjectLocation"
-   set the ExifTags["a215"] of stack "libEXIF"  to "ExposureIndex"
-   set the ExifTags["a217"] of stack "libEXIF"  to "SensingMethod"
-   set the ExifTags["a300"] of stack "libEXIF"  to "FileSource,3:Digital Camera"
-   set the ExifTags["a301"] of stack "libEXIF"  to "SceneType,1:Directly Photographed"
+   set the ExifTags["0100"] of this stack   to "ImageWidth"
+   set the ExifTags["0101"] of this stack    to "ImageLength"
+   set the ExifTags["0102"] of this stack   to "BitsPerSample"
+   set the ExifTags["0103"] of this stack   to "Compression,1:Uncompressed TIFF,6:JPEG Compressed"
+   set the ExifTags["0106"] of this stack   to "PhotometricInterpretation"
+   set the ExifTags["010a"] of this stack   to "FillOrder"
+   set the ExifTags["010d"] of this stack   to "DocumentName"
+   set the ExifTags["010e"] of this stack   to "ImageDescription"
+   set the ExifTags["010f"] of  this stack  to "Make"
+   set the ExifTags["0110"] of this stack  to "Model"
+   set the ExifTags["0111"] of  this stack   to "StripOffsets"
+   set the ExifTags["0112"] of  this stack   to "Orientation"
+   set the ExifTags["0115"] of  this stack  to "SamplesPerPixel"
+   set the ExifTags["0116"] of  this stack  to "RowsPerStrip"
+   set the ExifTags["0117"] of  this stack  to "StripByteCounts"
+   set the ExifTags["011a"] of  this stack to "XResolution"
+   set the ExifTags["011b"] of  this stack to "YResolution"
+   set the ExifTags["011c"] of  this stack  to "PlanarConfiguration"
+   set the ExifTags["0128"] of  this stack to "ResolutionUnit,1:Not Absolute,2:Pixels/Inch,3:Pixels/Centimeter"
+   set the ExifTags["012d"] of  this stack  to "TransferFunction"
+   set the ExifTags["0131"] of  this stack  to "Software"
+   set the ExifTags["0132"] of  this stack  to "DateTime"
+   set the ExifTags["013b"] of  this stack  to "Artist"
+   set the ExifTags["013e"] of this stack   to "WhitePoint"
+   set the ExifTags["013f"] of this stack   to "PrimaryChromaticities"
+   set the ExifTags["0156"] of this stack   to "TransferRange"
+   set the ExifTags["0200"] of this stack   to "JPEGProc"
+   set the ExifTags["0201"] of this stack   to "JPEGInterchangeFormat"
+   set the ExifTags["0202"] of this stack   to "JPEGInterchangeFormatLength"
+   set the ExifTags["0211"] of this stack   to "YCbCrCoefficients"
+   set the ExifTags["0212"] of this stack   to "YCbCrSubSampling"
+   set the ExifTags["0213"] of this stack   to "YCbCrPositioning"
+   set the ExifTags["0214"] of this stack   to "ReferenceBlackWhite"
+   set the ExifTags["828d"] of this stack   to "CFARepeatPatternDim"
+   set the ExifTags["828e"] of this stack   to "CFAPattern"
+   set the ExifTags["828f"] of this stack   to "BatteryLevel"
+   set the ExifTags["8298"] of this stack   to "Copyright"
+   set the ExifTags["829a"] of this stack   to "ExposureTime"
+   set the ExifTags["829d"] of this stack   to "FNumber"
+   set the ExifTags["83bb"] of this stack   to "IPTC/NAA"
+   set the ExifTags["8769"] of this stack   to "ExifOffset"
+   set the ExifTags["8773"] of this stack   to "InterColorProfile"
+   set the ExifTags["8822"] of this stack   to "ExposureProgram,0:Unidentified,1:Manual,2:Program Normal,3:Aperture Priority,4:Shutter Priority,5:Program Creative,6:Program Action,7:Portrait Mode,8:Landscape Mode"
+   set the ExifTags["8824"] of this stack   to "SpectralSensitivity"
+   set the ExifTags["8825"] of this stack   to "GPSInfo"
+   set the ExifTags["8827"] of this stack   to "ISOSpeedRatings"
+   set the ExifTags["8828"] of this stack   to "OECF"
+   set the ExifTags["9000"] of this stack   to "ExifVersion,numToChar"
+   set the ExifTags["9003"] of this stack   to "DateTimeOriginal"
+   set the ExifTags["9004"] of this stack   to "DateTimeDigitized"
+   set the ExifTags["9101"] of this stack   to "ComponentsConfiguration,0:,1:Y,2:Cb,3:Cr,4:Red,5:Green,6:Blue"
+   set the ExifTags["9102"] of this stack   to "CompressedBitsPerPixel"
+   set the ExifTags["9201"] of this stack   to "ShutterSpeedValue"
+   set the ExifTags["9202"] of this stack   to "ApertureValue"
+   set the ExifTags["9203"] of this stack   to "BrightnessValue"
+   set the ExifTags["9204"] of this stack   to "ExposureBiasValue"
+   set the ExifTags["9205"] of this stack   to "MaxApertureValue"
+   set the ExifTags["9206"] of this stack   to "SubjectDistance"
+   set the ExifTags["9207"] of this stack   to "MeteringMode,0:Unidentified,1:Average,2:CenterWeightedAverage,3:Spot,4:MultiSpot"
+   set the ExifTags["9208"] of this stack   to "LightSource,0:Unknown,1:Daylight,2:Fluorescent,3:Tungsten,10:Flash,17:Standard Light A,18:Standard Light B,19:Standard Light C,20:D55,21:D65,22:D75,255:Other"
+   set the ExifTags["9209"] of this stack   to "Flash,0:No,1:Fired,5:Fired (?),7:Fired (!),9:Fill Fired,13:Fill Fired (?),15:Fill Fired (!),16:Off,24:Auto Off,25:Auto Fired,29:Auto Fired (?),31:Auto Fired (!),32:Not Available"
+   set the ExifTags["920a"] of this stack   to "FocalLength"
+   set the ExifTags["927c"] of this stack   to "MakerNote"
+   set the ExifTags["9286"] of this stack   to "UserComment,numToChar"
+   set the ExifTags["9290"] of this stack   to "SubSecTime"
+   set the ExifTags["9291"] of this stack   to "SubSecTimeOriginal"
+   set the ExifTags["9292"] of this stack   to "SubSecTimeDigitized"
+   set the ExifTags["a000"] of this stack   to "FlashPixVersion,numToChar"
+   set the ExifTags["a001"] of this stack   to "ColorSpace"
+   set the ExifTags["a002"] of this stack   to "ExifImageWidth"
+   set the ExifTags["a003"] of this stack   to "ExifImageLength"
+   set the ExifTags["a005"] of this stack   to "InteroperabilityOffset"
+   set the ExifTags["a20b"] of this stack   to "FlashEnergy,)"
+   set the ExifTags["a20c"] of this stack   to "SpatialFrequencyResponse"
+   set the ExifTags["a20e"] of this stack   to "FocalPlaneXResolution"
+   set the ExifTags["a20f"] of this stack   to "FocalPlaneYResolution"
+   set the ExifTags["a210"] of this stack   to "FocalPlaneResolutionUnit"
+   set the ExifTags["a214"] of this stack   to "SubjectLocation"
+   set the ExifTags["a215"] of this stack   to "ExposureIndex"
+   set the ExifTags["a217"] of this stack   to "SensingMethod"
+   set the ExifTags["a300"] of this stack   to "FileSource,3:Digital Camera"
+   set the ExifTags["a301"] of this stack   to "SceneType,1:Directly Photographed"
    
-   set the IntrTags["0001"] of stack "libEXIF" to  "InteroperabilityIndex"
-   set the IntrTags["0002"] of stack "libEXIF" to  "InteroperabilityVersion"
-   set the IntrTags["1000"] of stack "libEXIF" to  "RelatedImageFileFormat"
-   set the IntrTags["1001"] of stack "libEXIF" to  "RelatedImageWidth"
-   set the IntrTags["1002"] of stack "libEXIF" to  "RelatedImageLength"
+   set the IntrTags["0001"] of this stack  to  "InteroperabilityIndex"
+   set the IntrTags["0002"] of this stack  to  "InteroperabilityVersion"
+   set the IntrTags["1000"] of this stack  to  "RelatedImageFileFormat"
+   set the IntrTags["1001"] of this stack  to  "RelatedImageWidth"
+   set the IntrTags["1002"] of this stack  to  "RelatedImageLength"
    
-   set the GPSTags["0000"] of stack "libEXIF" to  "GPSVersionID"
-   set the GPSTags["0001"] of stack "libEXIF" to  "GPSLatitudeRef"
-   set the GPSTags["0002"] of stack "libEXIF" to  "GPSLatitude"
-   set the GPSTags["0003"] of stack "libEXIF" to  "GPSLongitudeRef"
-   set the GPSTags["0004"] of stack "libEXIF" to  "GPSLongitude"
-   set the GPSTags["0005"] of stack "libEXIF" to  "GPSAltitudeRef"
-   set the GPSTags["0006"] of stack "libEXIF" to  "GPSAltitude"
-   set the GPSTags["0007"] of stack "libEXIF" to  "GPSTimeStamp"
-   set the GPSTags["0008"] of stack "libEXIF" to  "GPSSatellites"
-   set the GPSTags["0009"] of stack "libEXIF" to  "GPSStatus"
-   set the GPSTags["000a"] of stack "libEXIF" to  "GPSMeasureMode"
-   set the GPSTags["000b"] of stack "libEXIF" to  "GPSDOP"
-   set the GPSTags["000c"] of stack "libEXIF" to  "GPSSpeedRef"
-   set the GPSTags["000d"] of stack "libEXIF" to  "GPSSpeed"
-   set the GPSTags["000e"] of stack "libEXIF" to  "GPSTrackRef"
-   set the GPSTags["000f"] of stack "libEXIF" to  "GPSTrack"
-   set the GPSTags["0010"] of stack "libEXIF" to  "GPSImgDirectionRef"
-   set the GPSTags["0011"] of stack "libEXIF" to  "GPSImgDirection"
-   set the GPSTags["0012"] of stack "libEXIF" to  "GPSMapDatum"
-   set the GPSTags["0013"] of stack "libEXIF" to  "GPSDestLatitudeRef"
-   set the GPSTags["0014"] of stack "libEXIF" to  "GPSDestLatitude"
-   set the GPSTags["0015"] of stack "libEXIF" to  "GPSDestLongitudeRef"
-   set the GPSTags["0016"] of stack "libEXIF" to  "GPSDestLongitude"
-   set the GPSTags["0017"] of stack "libEXIF" to  "GPSDestBearingRef"
-   set the GPSTags["0018"] of stack "libEXIF" to  "GPSDestBearing"
-   set the GPSTags["0019"] of stack "libEXIF" to  "GPSDestDistanceRef"
-   set the GPSTags["001a"] of stack "libEXIF" to  "GPSDestDistance"
+   set the GPSTags["0000"] of this stack  to  "GPSVersionID"
+   set the GPSTags["0001"] of this stack  to  "GPSLatitudeRef"
+   set the GPSTags["0002"] of this stack  to  "GPSLatitude"
+   set the GPSTags["0003"] of this stack  to  "GPSLongitudeRef"
+   set the GPSTags["0004"] of this stack  to  "GPSLongitude"
+   set the GPSTags["0005"] of this stack  to  "GPSAltitudeRef"
+   set the GPSTags["0006"] of this stack  to  "GPSAltitude"
+   set the GPSTags["0007"] of this stack  to  "GPSTimeStamp"
+   set the GPSTags["0008"] of this stack  to  "GPSSatellites"
+   set the GPSTags["0009"] of this stack  to  "GPSStatus"
+   set the GPSTags["000a"] of this stack  to  "GPSMeasureMode"
+   set the GPSTags["000b"] of this stack  to  "GPSDOP"
+   set the GPSTags["000c"] of this stack  to  "GPSSpeedRef"
+   set the GPSTags["000d"] of this stack  to  "GPSSpeed"
+   set the GPSTags["000e"] of this stack  to  "GPSTrackRef"
+   set the GPSTags["000f"] of this stack  to  "GPSTrack"
+   set the GPSTags["0010"] of this stack  to  "GPSImgDirectionRef"
+   set the GPSTags["0011"] of this stack  to  "GPSImgDirection"
+   set the GPSTags["0012"] of this stack  to  "GPSMapDatum"
+   set the GPSTags["0013"] of this stack  to  "GPSDestLatitudeRef"
+   set the GPSTags["0014"] of this stack  to  "GPSDestLatitude"
+   set the GPSTags["0015"] of this stack  to  "GPSDestLongitudeRef"
+   set the GPSTags["0016"] of this stack  to  "GPSDestLongitude"
+   set the GPSTags["0017"] of this stack  to  "GPSDestBearingRef"
+   set the GPSTags["0018"] of this stack  to  "GPSDestBearing"
+   set the GPSTags["0019"] of this stack  to  "GPSDestDistanceRef"
+   set the GPSTags["001a"] of this stack  to  "GPSDestDistance"
    
-   set the markerCOM of stack "libEXIF" to "FE"
-   set the markerSOS of stack "libEXIF" to "C0"
-   set the markerJFIF of stack "libEXIF" to "E0"
-   set the markerEXIF of stack "libEXIF" to "E1"
+   set the markerCOM of this stack  to "FE"
+   set the markerSOS of this stack  to "C0"
+   set the markerJFIF of this stack  to "E0"
+   set the markerEXIF of this stack  to "E1"
 end exifResetTags
+
+function exifProcessFileArray pData
+   #Image ,Make,Research In Motion,ASCII,134
+   #Image ,Model,BlackBerry 9700,ASCII,154
+   #Image ,Orientation,1,Short,42
+   put exifProcessFile( pData) into pdata
+   repeat for each line tLine in pdata
+      put item 1 of tLine into tnome1
+      put item 2 of tLine into tnome2
+      put item 3 to -1 of tLine into tArray [tnome1] [tnome2]
+   end repeat   
+   return tArray
+end exifProcessFileArray
+
+on OpenStack
+   exifResetTags
+   set the FieldTypes of this stack to "0,X,Proprietary" & return & "1,B,Byte" & return & "1,A,ASCII" & return & "2,S,Short" & return & "4,L,Long" & return & "8,R,Ratio" & return & "1,SB,Signed Byte" & return & "1,U,Undefined" & return & "2,SS,Signed Short" & return &"4,SL,Signed Long" & return & "8,SR,Signed Ratio" & return & "-1,STR,String"
+   set the MarkerCOM of this stack to "FE"
+   set the MarkerEXIF of this stack to "E1"
+   set the MarkerJFIF of this stack to "E0"
+   set the MarkerSOS of this stack to "C0"
+end OpenStack
