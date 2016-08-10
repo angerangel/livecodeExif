@@ -11,6 +11,7 @@ Use the code:
     put exifProcessFile(pData,true)
 
 The **OpenStack** or the **exifResetTags** messages create all custom properties needed.
+You may use **exifProcessFileArray(pData,true)** the get the data in array form.
 
 ## How contribute
 The **exifResetTags** contains how to interprete the EXIF code, you could add more there.
