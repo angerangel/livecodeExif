@@ -1,3 +1,4 @@
+﻿script "libEXIF"
 local lexifEndian  -- set to either I for Intel or M for Motorola 
 local lexifBaseOffset
 local lexifData
