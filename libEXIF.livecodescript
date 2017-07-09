@@ -1,25 +1,41 @@
 ﻿script "libEXIF"
-local lexifEndian  -- set to either I for Intel or M for Motorola 
+local lexifEndian  -- set to either I for Intel or M for Motorola
 local lexifBaseOffset
 local lexifData
 
 local maxLimitOnSizeOfUnknown = 200
 local replaceLimitOnSizeOfUnknown = 10
 
-function exifProcessFile pData -- pAllTags
+-- these are never modified, so may as well make them constants
+constant kMarkerCOM="FE"
+constant kMarkerEXIF="E1"
+constant kMarkerJFIF="E0"
+constant kMarkerSOS="C0"
+
+-- and magic numbers here for readability
+constant kTIFFIntel="49492a00"
+constant kTIFFMotorola="4c4c2a00"
+
+function exifProcessFile pData
    -- pData should already contain the entire file (e.g. put URL "binfile:the.jpg" into tData) before calling
    -- pAllTags - true if should return all tags, otherwise (default = false) return only known tags
-   
-   local allTags  
+
+   local allTags
+   local tIFDs, tIFDName
+   local counter
+   local ifdTags, exifTags, intrTags, gpsTags
+   local tExifOffset, tIntrOffset, tGPSOffset
+   local tAllTags
+
    if paramcount() < 2 then
-      put false into pAllTags
+      put false into tAllTags
    else
-      put param(2) into pAllTags
+      put param(2) into tAllTags
    end if
-   
+
    put exifProcessHeader(pData) into tIFDs
    if tIFDs < 0 then return tIFDs
-   
+
    put 1 into counter
    repeat for each word tW in tIFDs
       -- if tW = 0 - continue (allows loeading 0 to avoid negative values clashing with error returns
@@ -60,9 +76,9 @@ function exifProcessFile pData -- pAllTags
       end if
       add 1 to counter
    end repeat
-   
+
    -- and now we have them all
-   if not pAllTags then
+   if not tAllTags then
       filter allTags without "*Tag *"
       filter allTags without "*Undefined*"
    end if
@@ -75,12 +91,18 @@ function exifProcessHeader pData
    -- returns    -1 if pFilePath not a suitable open file  (no longer relevant)
    --            -2 if not recognized as a file that libEXIF can decode
    --            -3 JFIF and other un-handled data
-   
+
    local tHex, tJ, tFirstIFD, tIFDs, i
-   
+   local tLimit
+   local debuglexifData
+   local markerOffset, t, marker
+   local lh, ll, itemLen
+   local endian
+   local tEntries, tNext
+
    put pData into lexifData
    put empty into tIFDs
-   
+
    -- temp debugging
    put 1000 into tLimit
    repeat for each char c in lexifData
@@ -90,15 +112,15 @@ function exifProcessHeader pData
       put tHex & space after debuglexifData
    end repeat
    -- end of temp debugging
-   
+
    put binaryDecode("H8", lexifData, tHex) into tJ
    switch
-      case tHex = "49492a00"
+      case tHex = kTIFFIntel
          -- TIFF file in Intel format
          put "I" into lexifEndian
          put 1 into lexifBaseOffset
          break
-      case tHex = "4c4c2a00"
+      case tHex = kTIFFMotorola
          -- TIFF file in Motorola format
          put "M" into lexifEndian
          put 1 into lexifBaseOffset
@@ -113,7 +135,7 @@ function exifProcessHeader pData
                add 1 to markerOffset
             end repeat
             if marker = "FF" then return "" -- too many padding bytes
-            
+
             ------      offset_frame = file.tell()
             add 1 to markerOffset
             put chartonum(char (markerOffset) of lexifData) into lh
@@ -121,15 +143,15 @@ function exifProcessHeader pData
             put lh*256 + ll into itemLen
             ------      data = file.read(itemlen-2)
             switch marker
-               case the markerCOM of this stack 
+               case kMarkerCOM
                   put 0 & space & -(markerOffset-1) & space after tIFDs
                   break
-               case the markerJFIF of this stack 
+               case kMarkerJFIF
                   break
-               case the markerSOS of this stack  # Start of Stream (of pixel data)
+               case kMarkerSOS  # Start of Stream (of pixel data)
                   put 0 into endian
                   return tIFDs
-               case the markerEXIF of this stack 
+               case kMarkerEXIF
                   if char (markerOffset+2) to (markerOffset+5) of lexifData = "Exif" then
                      put markerOffset+8 into lexifBaseOffset  --  2 length, 4 Exif, 2 ??
                      put char lexifBaseOffset of lexifData into lexifEndian
@@ -142,7 +164,7 @@ function exifProcessHeader pData
       default
          return "-2"
    end switch
-   
+
    put s2n(4,4) into tFirstIFD
    put tFirstIFD into i
    repeat while i > 0
@@ -155,18 +177,33 @@ function exifProcessHeader pData
 end exifProcessHeader
 
 function exifDecodeIFD pIFD, pIFDName
+   local TagDict, pDict, tTags, tEntries, tTag
+   local tEntry
+   local t, tJ
+   local tFieldType
+   local tTagEntry
+   local typelen
+   local count
+   local tOffset, tFieldOffset
+   local tJunk, tValues, tSigned, junk
+   local numToDo
+   local tPrintable, tTagName
+   local tResult
+   local tEnumerated
+   local gdebugalltags
+
    if paramcount() < 3 then
       put customProperties["ExifTags"] of stack me into TagDict
    else
       put param(3) into pDict
       put customProperties[pDict] of stack me into TagDict
    end if
-   
+
    --  put the customProperties["ExifTags"] of stack me into TagDict
    put empty into tTags
    put s2n(pIFD, 2) into tEntries
    put empty into tTag   -- to ensure it already exists
-   
+
    repeat with i = 1 to tEntries
       put pIFD+2+12*(i-1) into tEntry
       put "x" & lexifBaseOffset-1+tEntry & "H4" into t
@@ -175,7 +212,7 @@ function exifDecodeIFD pIFD, pIFDName
       put s2n(tEntry+2, 2) into tFieldType
       -- figure out tag name
       put TagDict[tTag] into tTagEntry
-      
+
       if tFieldType < 1 or tFieldType > the number of lines in the FieldTypes of stack me then
          throw "Unknown field type" & tFieldType & " in tag " & tTag
       end if
@@ -189,10 +226,10 @@ function exifDecodeIFD pIFD, pIFDName
       put tOffset into tFieldOffset
       if tFieldType = 2 then
          -- special case null-terminated ASCII string
-         if count <> 0 then 
+         if count <> 0 then
             --        read from file lexifFilePath at lexifBaseOffset+tOffset for count
             put "x" & lexifBaseOffset+tOffset-1 & "a" & count into t
-            
+
             put binaryDecode(t, lexifData, tJunk, tValues) into tJ
             -- ?? replace nulls ??
             if offset(numtochar(0), tValues) > 0 then
@@ -229,7 +266,7 @@ function exifDecodeIFD pIFD, pIFDName
       end if
       if tTagEntry <> "" then
          put the first item of tTagEntry into tTagName
-         if the number of items in tTagEntry > 1 then 
+         if the number of items in tTagEntry > 1 then
             put 1 into junk
             if item 2 of tTagEntry = "numToChar" then
                if tFieldType = 7 then
@@ -252,7 +289,7 @@ function exifDecodeIFD pIFD, pIFDName
       else
          put "Tag " & tTag into tTagName
       end if
-      put pIFDName & COMMA & tTagName & COMMA & tPrintable & COMMA & item 3 of line (tFieldType+1) of the FieldTypes of me & COMMA & tFieldOffset & CR after tTags 
+      put pIFDName & COMMA & tTagName & COMMA & tPrintable & COMMA & item 3 of line (tFieldType+1) of the FieldTypes of me & COMMA & tFieldOffset & CR after tTags
       put tTags into gdebugalltags
    end repeat
    return tTags
@@ -263,13 +300,19 @@ function exifIFD_Tag pPrintable, pTag, pFieldType, pValues, pFieldOffset, county
 end exifIFD_Tag
 
 function processMarker pOffset
+   local t, tJ
+   local lh, ll, ch
+   local itemLen
+   local marker
+   local tComment
+
    put char pOffset of lexifData into t
    put binaryDecode("H2", t, marker) into tJ
    put chartonum(char (pOffset+1) of lexifData) into lh
    put chartonum(char (pOffset+2) of lexifData) into ll
    put lh*256 + ll into itemLen
    switch marker
-      case the markerCOM of this stack 
+      case kMarkerCOM
          put empty into tComment
          repeat with a = 1 to itemlen
             put char (pOffset+2+a) of lexifData into ch
@@ -288,6 +331,8 @@ function processMarker pOffset
 end processMarker
 
 function exifRatio a, b
+   local tDivisor
+
    put exifGCD(a,b) into tDivisor
    if tDivisor <> 1 and tDivisor <> 0 then
       divide a by tDivisor
@@ -297,7 +342,7 @@ function exifRatio a, b
 end exifRatio
 
 function exifGCD a, b
-   if b = 0 then 
+   if b = 0 then
       return a
    else
       return exifGCD(b, a mod b)
@@ -305,6 +350,8 @@ function exifGCD a, b
 end exifGCD
 
 function s2n poffset, plength, psigned
+   local tVar, tVal
+
    put char (lexifBaseOffset+poffset) to (lexifBaseOffset+poffset+plength-1) of lexifData into tVar
    if lexifEndian = "I" then
       put s2n_intel(tVar) into tVal
@@ -318,6 +365,8 @@ end s2n
 
 -- extract multibyte integer in Motorola format (little endian)
 function s2n_motorola pStr
+   local x, c1, tJ
+
    put 0 into x
    put empty into c1
    repeat for each char c in pStr
@@ -329,6 +378,8 @@ end s2n_motorola
 
 -- extract multibyte integer in Intel format (big endian)
 function s2n_intel pStr
+   local x, y, c1, tJ
+
    put 0 into x
    put 1 into y
    put empty into c1
@@ -424,13 +475,13 @@ on exifResetTags
    set the ExifTags["a217"] of this stack   to "SensingMethod"
    set the ExifTags["a300"] of this stack   to "FileSource,3:Digital Camera"
    set the ExifTags["a301"] of this stack   to "SceneType,1:Directly Photographed"
-   
+
    set the IntrTags["0001"] of this stack  to  "InteroperabilityIndex"
    set the IntrTags["0002"] of this stack  to  "InteroperabilityVersion"
    set the IntrTags["1000"] of this stack  to  "RelatedImageFileFormat"
    set the IntrTags["1001"] of this stack  to  "RelatedImageWidth"
    set the IntrTags["1002"] of this stack  to  "RelatedImageLength"
-   
+
    set the GPSTags["0000"] of this stack  to  "GPSVersionID"
    set the GPSTags["0001"] of this stack  to  "GPSLatitudeRef"
    set the GPSTags["0002"] of this stack  to  "GPSLatitude"
@@ -458,31 +509,25 @@ on exifResetTags
    set the GPSTags["0018"] of this stack  to  "GPSDestBearing"
    set the GPSTags["0019"] of this stack  to  "GPSDestDistanceRef"
    set the GPSTags["001a"] of this stack  to  "GPSDestDistance"
-   
-   set the markerCOM of this stack  to "FE"
-   set the markerSOS of this stack  to "C0"
-   set the markerJFIF of this stack  to "E0"
-   set the markerEXIF of this stack  to "E1"
 end exifResetTags
 
 function exifProcessFileArray pData
    #Image ,Make,Research In Motion,ASCII,134
    #Image ,Model,BlackBerry 9700,ASCII,154
    #Image ,Orientation,1,Short,42
+   local tnome1, tnome2
+   local tArray
+
    put exifProcessFile( pData) into pdata
    repeat for each line tLine in pdata
       put word 1 of item 1 of tLine into tnome1
       put word 1 of item 2 of tLine into tnome2
       put item 3 to -1 of tLine into tArray [tnome1] [tnome2]
-   end repeat   
+   end repeat
    return tArray
 end exifProcessFileArray
 
 on OpenStack
    exifResetTags
    set the FieldTypes of this stack to "0,X,Proprietary" & return & "1,B,Byte" & return & "1,A,ASCII" & return & "2,S,Short" & return & "4,L,Long" & return & "8,R,Ratio" & return & "1,SB,Signed Byte" & return & "1,U,Undefined" & return & "2,SS,Signed Short" & return &"4,SL,Signed Long" & return & "8,SR,Signed Ratio" & return & "-1,STR,String"
-   set the MarkerCOM of this stack to "FE"
-   set the MarkerEXIF of this stack to "E1"
-   set the MarkerJFIF of this stack to "E0"
-   set the MarkerSOS of this stack to "C0"
 end OpenStack
